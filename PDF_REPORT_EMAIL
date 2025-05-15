@@ -1,0 +1,127 @@
+# Email By Python + PDF  Report + No Email Temp : Odoo18
+
+    def send_warranty_email(self):
+        """Open mail composition wizard with warranty card PDF attached."""
+        self.ensure_one()  # Ensure we're working with a single record
+        if not self.customer_id or not self.customer_id.email:
+            raise UserError("Customer or customer email is missing.")
+        if not self.customer_id.name:
+            raise UserError("Customer name is missing.")
+
+        # Fetch the report action by its report_name, avoiding env.ref
+        report = self.env['ir.actions.report'].search(
+            [('report_name', '=', 'sales_warranty.sales_warranty_report_id')],
+            limit=1
+        )
+        if not report:
+            raise UserError("Warranty card report not found.")
+
+        # Explicitly pass report_ref to _render_qweb_pdf
+        try:
+            _logger.info("Rendering PDF for record %s with report ID %s", self.id, report.id)
+            # Pass report_ref explicitly as the first argument
+            pdf_content = report._render_qweb_pdf(report.report_name, res_ids=[self.id])[0]
+            _logger.info("PDF rendering successful for record %s", self.id)
+        except Exception as e:
+            error_message = f"Failed to render warranty card PDF: {str(e)}"
+            _logger.error(error_message)
+            raise UserError(error_message)
+
+        # Create an attachment for the PDF
+        attachment = self.env['ir.attachment'].create({
+            'name': f"Warranty_Card_{self.name or 'Warranty_' + str(self.id)}.pdf",
+            'type': 'binary',
+            'datas': base64.b64encode(pdf_content),
+            'res_model': self._name,
+            'res_id': self.id,
+            'mimetype': 'application/pdf',
+        })
+
+        ctx = {
+            'default_model': self._name,
+            'default_res_ids': [self.id],  # Changed from default_res_id to default_res_ids
+            'default_use_template': False,
+            'default_template_id': False,
+            'default_composition_mode': 'comment',
+            'default_partner_ids': [self.customer_id.id],
+            'default_subject': 'Sales Warranty Email',
+            'default_body': f"""
+                <div>
+                    <p>Dear {self.customer_id.name},</p>
+                    <p>Please find attached your warranty card for your recent purchase.</p>
+                    <p>Thank you for choosing us!</p>
+                </div>
+            """,
+            'default_attachment_ids': [(4, attachment.id)],
+        }
+
+        # Return an action to open the mail composer
+        return {
+            'type': 'ir.actions.act_window',
+            'view_mode': 'form',
+            'res_model': 'mail.compose.message',
+            'target': 'new',
+            'context': ctx,
+        }
+
+
+
+    # def send_warranty_email(self):
+    #     """Send an email with the warranty card PDF attached via unrestricted_attachment_ids."""
+    #     self.ensure_one()  # Ensure we're working with a single record
+    #     if not self.customer_id or not self.customer_id.email:
+    #         raise UserError("Customer or customer email is missing.")
+    #     if not self.customer_id.name:
+    #         raise UserError("Customer name is missing.")
+    #
+    #     # Fetch the report action by its report_name, avoiding env.ref
+    #     report = self.env['ir.actions.report'].search(
+    #         [('report_name', '=', 'sales_warranty.sales_warranty_report_id')],
+    #         limit=1
+    #     )
+    #     if not report:
+    #         raise UserError("Warranty card report not found.")
+    #
+    #     # Explicitly pass report_ref to _render_qweb_pdf
+    #     try:
+    #         _logger.info("Rendering PDF for record %s with report ID %s", self.id, report.id)
+    #         # Pass report_ref explicitly as the first argument
+    #         pdf_content = report._render_qweb_pdf(report.report_name, res_ids=[self.id])[0]
+    #         _logger.info("PDF rendering successful for record %s", self.id)
+    #     except Exception as e:
+    #         error_message = f"Failed to render warranty card PDF: {str(e)}"
+    #         _logger.error(error_message)
+    #         raise UserError(error_message)
+    #
+    #     # Create an attachment for the PDF
+    #     attachment = self.env['ir.attachment'].create({
+    #         'name': f"Warranty_Card_{self.name or 'Warranty_' + str(self.id)}.pdf",
+    #         'type': 'binary',
+    #         'datas': base64.b64encode(pdf_content),
+    #         'res_model': self._name,
+    #         'res_id': self.id,
+    #         'mimetype': 'application/pdf',
+    #     })
+    #
+    #     # Prepare email content
+    #     mail_values = {
+    #         'subject': 'Sales Warranty Email',
+    #         'email_from': self.env.user.email or 'no-reply@yourcompany.com',
+    #         'email_to': self.customer_id.email,
+    #         'body_html': f"""
+    #             <div>
+    #                 <p>Dear {self.customer_id.name},</p>
+    #                 <p>Please find attached your warranty card for your recent purchase.</p>
+    #                 <p>Thank you for choosing us!</p>
+    #             </div>
+    #         """,
+    #         'unrestricted_attachment_ids': [(6, 0, [attachment.id])],  # Use unrestricted_attachment_ids
+    #         'auto_delete': False,
+    #     }
+    #
+    #
+    #     mail = self.env['mail.mail'].create(mail_values)
+    #     try:
+    #         mail.send(raise_exception=True)
+    #     except Exception as e:
+    #         raise UserError(f"Failed to send email: {str(e)}")
